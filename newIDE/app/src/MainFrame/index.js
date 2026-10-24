@@ -108,6 +108,8 @@ import {
 } from '../InGameEditorExtensionErrors';
 import { createGameCrashReport } from '../Utils/GDevelopServices/Analytics';
 import InGameEditorExtensionErrorsIndicator from '../InGameEditorExtensionErrors/InGameEditorExtensionErrorsIndicator';
+import SlowGraphicsRenderingIndicator from '../SlowGraphicsRendering/SlowGraphicsRenderingIndicator';
+import { LineStackLayout } from '../UI/Layout';
 import { renderResourcesEditorContainer } from './EditorContainers/ResourcesEditorContainer';
 import { renderGlobalEventsSearchEditorContainer } from './EditorContainers/GlobalEventsSearchEditorContainer';
 import { type RenderEditorContainerPropsWithRef } from './EditorContainers/BaseEditor';
@@ -256,6 +258,7 @@ import { addDefaultLightToAllLayers } from '../ProjectCreation/CreateProject';
 import { type NewProjectSetup } from '../ProjectCreation/NewProjectSetupDialog';
 import useEditorTabsStateSaving from './EditorTabs/UseEditorTabsStateSaving';
 import PixiResourcesLoader from '../ObjectsRendering/PixiResourcesLoader';
+import { burstResource3DPreviewCache } from '../ResourcesList/ResourcePreview/Resource3DPreviewCache';
 import useResourcesWatcher from './ResourcesWatcher';
 import { useResourcesAccessRefresh } from './UseResourcesAccessRefresh';
 import { extractGDevelopApiErrorStatusAndCode } from '../Utils/GDevelopServices/Errors';
@@ -1400,6 +1403,7 @@ const MainFrame = (props: Props): React.MixedElement => {
       // for another resource with the same name in the new project.
       ResourcesLoader.burstAllUrlsCache();
       PixiResourcesLoader.burstCache();
+      burstResource3DPreviewCache();
 
       // Set the on-disk path before exposing the project via state so that
       // consumers (like the CLI command dispatcher) can call getProjectFile()
@@ -6228,21 +6232,24 @@ const MainFrame = (props: Props): React.MixedElement => {
         previewDebuggerServer={previewDebuggerServer || null}
         onLaunchPreviewForInGameEdition={onLaunchPreviewForInGameEdition}
       >
-        <InGameEditorExtensionErrorsIndicator
-          errors={inGameEditorExtensionErrors}
-          isFromStore={error =>
-            isInGameEditorExtensionErrorFromStore(currentProject, error)
-          }
-          onAskAiToFix={() =>
-            openAskAi({
-              prefilledUserRequest: getAskAiToFixInGameEditorExtensionErrorsText(
-                inGameEditorExtensionErrors
-              ),
-              prefillInCurrentChat: true,
-            })
-          }
-          onDismiss={clearInGameEditorExtensionErrors}
-        />
+        <LineStackLayout noMargin>
+          <SlowGraphicsRenderingIndicator />
+          <InGameEditorExtensionErrorsIndicator
+            errors={inGameEditorExtensionErrors}
+            isFromStore={error =>
+              isInGameEditorExtensionErrorFromStore(currentProject, error)
+            }
+            onAskAiToFix={() =>
+              openAskAi({
+                prefilledUserRequest: getAskAiToFixInGameEditorExtensionErrorsText(
+                  inGameEditorExtensionErrors
+                ),
+                prefillInCurrentChat: true,
+              })
+            }
+            onDismiss={clearInGameEditorExtensionErrors}
+          />
+        </LineStackLayout>
       </EmbeddedGameFrame>
       <GameplayTestFrame
         previewDebuggerServer={previewDebuggerServer || null}
