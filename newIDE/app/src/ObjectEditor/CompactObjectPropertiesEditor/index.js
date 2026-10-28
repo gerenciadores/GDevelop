@@ -536,6 +536,9 @@ export const CompactObjectPropertiesEditor = ({
         layersContainer,
         visibility: 'All',
         shouldDisabledFieldsWithMixedValues: false,
+        propertyGroups: objectMetadata
+          ? objectMetadata.getPropertyGroups()
+          : null,
       });
 
       if (layout && layout.getObjects().hasObjectNamed(object.getName())) {
@@ -552,6 +555,7 @@ export const CompactObjectPropertiesEditor = ({
       layout,
       onObjectsModified,
       i18n,
+      objectMetadata,
     ]
   );
 
@@ -908,7 +912,7 @@ export const CompactObjectPropertiesEditor = ({
             ) && (
               <CompactEffectsListEditor
                 layerRenderingType={'2d'}
-                target={'layer'}
+                target={'object'}
                 project={project}
                 resourceManagementProps={resourceManagementProps}
                 projectScopedContainersAccessor={
