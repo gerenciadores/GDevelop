@@ -317,6 +317,9 @@ export type ResourceSearch = {
     resource: {
       name: string,
       url: string,
+      tags?: Array<string>,
+      // Like the duration of an audio file, or the alphabets of a font.
+      metadata?: ?Object,
     },
   }> | null,
 };
@@ -925,7 +928,9 @@ export const createAiGeneratedEvent = async (
     existingEventsJson: string | null,
     existingEventsJsonUserRelativeKey: string | null,
     placementHint: string | null,
-    relatedAiRequestId: string,
+    // Null for a request outside the GDevelop AI (the CLI, the MCP server):
+    // the events scripts are then only compiled, never handed to an agent.
+    relatedAiRequestId: string | null,
     estimatedComplexity: number | null,
   |}
 ): Promise<CreateAiGeneratedEventResult> => {
@@ -1104,6 +1109,59 @@ export const createResourceSearch = async (
     data: response.data,
     propertyName: 'id',
     endpointName: '/resource-search of Generation API',
+  });
+};
+
+// The output of a function of the GDevelop AI reading the docs or searching
+// the stores: `success`, an optional `message` and the found content, given
+// as is to the agent.
+export type LookupToolCall = {|
+  name: string,
+  output: { success: boolean, message?: string, [string]: any },
+|};
+
+export const createLookupToolCall = async (
+  getAuthorizationHeader: () => Promise<string>,
+  {
+    userId,
+    name,
+    args,
+    toolsVersion,
+    projectSpecificExtensionsSummaryJson,
+    projectSpecificExtensionsSummaryJsonUserRelativeKey,
+  }: {|
+    userId: string,
+    name: string,
+    args: Object,
+    toolsVersion: string,
+    projectSpecificExtensionsSummaryJson: string | null,
+    projectSpecificExtensionsSummaryJsonUserRelativeKey: string | null,
+  |}
+): Promise<LookupToolCall> => {
+  const authorizationHeader = await getAuthorizationHeader();
+  const response = await apiClient.post(
+    `/lookup-tool-call`,
+    {
+      name,
+      arguments: args,
+      gdevelopVersionWithHash: getIDEVersionWithHash(),
+      toolsVersion,
+      projectSpecificExtensionsSummaryJson,
+      projectSpecificExtensionsSummaryJsonUserRelativeKey,
+    },
+    {
+      params: {
+        userId,
+      },
+      headers: {
+        Authorization: authorizationHeader,
+      },
+    }
+  );
+  return ensureObjectHasProperty({
+    data: response.data,
+    propertyName: 'output',
+    endpointName: '/lookup-tool-call of Generation API',
   });
 };
 

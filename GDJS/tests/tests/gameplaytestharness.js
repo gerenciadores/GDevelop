@@ -361,6 +361,42 @@ describe('gdjs.gameplayTests', () => {
     });
   });
 
+  describe('harness extensions', () => {
+    /** @type {Array<string>} */
+    const testEndedCalls = [];
+    before(() => {
+      gdjs.gameplayTests.registerHarnessExtension('example', (harness) => ({
+        getSceneNameTwice: () => harness.getSceneName().repeat(2),
+        undoAtTheEnd: () =>
+          harness.onTestEnded(() => testEndedCalls.push('undone')),
+      }));
+    });
+
+    it('adds the helpers of an extension to the harness, and calls back at the end of the test', async () => {
+      const result = await runTestScript(
+        makeRuntimeGame(),
+        `
+        await harness.goToScene('Scene 1');
+        harness.example.undoAtTheEnd();
+        harness.assert(harness.example.getSceneNameTwice() === 'Scene 1Scene 1', 'The helpers can use the harness.');
+        harness.fail('Failing before the end');
+        `
+      );
+
+      expect(result.errors).to.eql(['Failing before the end']);
+      expect(testEndedCalls).to.eql(['undone']);
+    });
+
+    it('refuses an extension name that is already a member of the harness, or not in camelCase', () => {
+      expect(() =>
+        gdjs.gameplayTests.registerHarnessExtension('stepFrames', () => ({}))
+      ).to.throwException(/"stepFrames" is already a member of the harness/);
+      expect(() =>
+        gdjs.gameplayTests.registerHarnessExtension('My extension', () => ({}))
+      ).to.throwException(/Invalid harness extension name "My extension"/);
+    });
+  });
+
   it('reports a script error', async () => {
     const runtimeGame = makeRuntimeGame();
     const result = await runTestScript(
@@ -661,6 +697,103 @@ describe('gdjs.gameplayTests', () => {
     expect(result.status).to.be('passed');
     expect(result.loadingMs >= 280).to.be(true);
   }).timeout(10000);
+
+  it('tells the editor when it is loading, before creating the scene', async () => {
+    const runtimeGame = makeRuntimeGame();
+    /** @type {Array<{isLoading: boolean, isSceneCreated: boolean}>} */
+    const progresses = [];
+    const result = await gdjs.gameplayTests.runGameplayTest(
+      runtimeGame,
+      {
+        testName: 'Test',
+        source: `
+        await harness.goToScene('Scene 2');
+        await harness.stepFrames(1);
+        `,
+        timeoutMs: 5000,
+      },
+      (progress) => {
+        const currentScene = runtimeGame.getSceneStack().getCurrentScene();
+        progresses.push({
+          isLoading: progress.isLoading,
+          isSceneCreated:
+            !!currentScene && currentScene.getName() === 'Scene 2',
+        });
+      }
+    );
+
+    expect(result.status).to.be('passed');
+    const firstLoadingProgressIndex = progresses.findIndex(
+      (progress) => progress.isLoading
+    );
+    expect(firstLoadingProgressIndex).not.to.be(-1);
+    expect(progresses[firstLoadingProgressIndex].isSceneCreated).to.be(false);
+    expect(progresses[progresses.length - 1]).to.eql({
+      isLoading: false,
+      isSceneCreated: true,
+    });
+  });
+
+  it('runs a test once the stopped test it replaces has ended', async () => {
+    const runtimeGame = makeRuntimeGame();
+    const stoppedResultPromise = runTestScript(
+      runtimeGame,
+      `
+      await harness.goToScene('Scene 1');
+      await new Promise((resolve) => setTimeout(resolve, 60 * 1000));
+      `,
+      { timeoutMs: 120 * 1000 }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The editor stops a test it gave up on, then runs the next one right
+    // away, while the stopped one is still ending.
+    gdjs.gameplayTests.stopCurrentGameplayTest();
+    const result = await runTestScript(
+      runtimeGame,
+      `
+      await harness.goToScene('Scene 1');
+      harness.assert(true, 'Ran');
+      `
+    );
+
+    expect((await stoppedResultPromise).status).to.be('stopped');
+    expect(result.errors).to.eql([]);
+    expect(result.status).to.be('passed');
+  });
+
+  it('waits between the creation of a scene and its first frame when asked', async () => {
+    const result = await runTestScript(
+      makeRuntimeGame(),
+      `
+      const events = [];
+      setTimeout(() => events.push('timer'), 100);
+      const scene = await (async () => {
+        await harness.goToScene('Scene 1', { delayBeforeFirstFrameMs: 300 });
+        return harness.getCurrentRuntimeScene();
+      })();
+      events.push('first frame stepped at ' + scene.getTimeManager().getTimeFromStart());
+      harness.assert(events[0] === 'timer', 'The timers fire before the first frame: ' + JSON.stringify(events));
+      `,
+      { timeoutMs: 200 }
+    );
+
+    expect(result.errors).to.eql([]);
+    expect(result.status).to.be('passed');
+    // Waited as loading, outside of the timeout budget.
+    expect(result.loadingMs >= 280).to.be(true);
+  });
+
+  it('refuses a negative delay before the first frame of a scene', async () => {
+    const result = await runTestScript(
+      makeRuntimeGame(),
+      `await harness.goToScene('Scene 1', { delayBeforeFirstFrameMs: -1 });`
+    );
+
+    expect(result.status).to.be('error');
+    expect(result.errors[0]).to.contain(
+      'delayBeforeFirstFrameMs expects a number of milliseconds between 0 and 60000.'
+    );
+  });
 
   it('lets a test change its timeout budget', async () => {
     const result = await runTestScript(
@@ -989,6 +1122,78 @@ describe('gdjs.gameplayTests', () => {
         (event) => event.event === 'spawned' && event.object === 'MyObject'
       )
     ).to.be(true);
+  });
+
+  it('reads and sets the children of variables with paths', async () => {
+    const sceneData = createSceneData('Scene 1');
+    sceneData.variables = [
+      {
+        name: 'Hit',
+        type: 'structure',
+        children: [{ name: 'Distance', type: 'number', value: 0 }],
+      },
+      {
+        name: 'Items',
+        type: 'array',
+        children: [
+          {
+            type: 'structure',
+            children: [{ name: 'Name', type: 'string', value: 'Sword' }],
+          },
+        ],
+      },
+      { name: 'Score', type: 'number', value: 3 },
+    ];
+    const runtimeGame = gdjs.getPixiRuntimeGame({ layouts: [sceneData] });
+    const result = await runTestScript(
+      runtimeGame,
+      `
+      await harness.goToScene('Scene 1');
+      harness.setSceneVariable('Hit.Distance', 12);
+      harness.setSceneVariable('Hit.Side', 'left');
+      harness.setSceneVariable('Items[0].Name', 'Shield');
+
+      harness.assert(
+        harness.getSceneVariable('Hit.Distance').value === 12,
+        'A declared child is set'
+      );
+      harness.assert(
+        harness.getSceneVariable('Hit.Side').value === 'left',
+        'A missing child of a structure is created'
+      );
+      harness.assert(
+        harness.getSceneVariable('Items[0].Name').value === 'Shield',
+        'A child of an item of an array is set'
+      );
+      harness.assert(
+        harness.getSceneVariable('Hit.Missing') === undefined,
+        'A missing child is undefined'
+      );
+
+      const errors = [];
+      for (const variablePath of [
+        'Missing.Child',
+        'Score.Child',
+        'Items[1]',
+        'Hit[0]',
+        'Hit..Distance',
+      ]) {
+        try {
+          harness.setSceneVariable(variablePath, 1);
+          errors.push(variablePath + ' was set');
+        } catch (error) {}
+      }
+      harness.assert(errors.length === 0, errors.join(', '));
+      `
+    );
+
+    expect(result.status).to.be('passed');
+    const currentScene = runtimeGame.getSceneStack().getCurrentScene();
+    if (!currentScene) throw new Error('No scene is running.');
+    const sceneVariables = currentScene.getVariables();
+    expect(sceneVariables.has('Hit.Distance')).to.be(false);
+    expect(sceneVariables.has('Missing')).to.be(false);
+    expect(sceneVariables.get('Score').getAsNumber()).to.be(3);
   });
 
   it('records a sceneReset event when the same scene is restarted', async () => {

@@ -51,6 +51,7 @@ export type Subscription = {|
 
   cancelAtPeriodEnd?: boolean,
   cancelReasons?: CancelReasons,
+  endOfPeriodAt?: number,
 
   purchaselyPlan?: string,
 
@@ -739,6 +740,7 @@ export const getRedirectToCheckoutUrl = ({
   quantity,
   couponCode,
   language,
+  password,
 }: {|
   pricingSystemId: string,
   userId: string,
@@ -746,6 +748,7 @@ export const getRedirectToCheckoutUrl = ({
   quantity?: number,
   couponCode?: string,
   language: string,
+  password?: string,
 |}): string => {
   const url = new URL(
     `${GDevelopUsageApi.baseUrl}/subscription-v2/action/redirect-to-checkout-v2`
@@ -757,6 +760,7 @@ export const getRedirectToCheckoutUrl = ({
     url.searchParams.set('quantity', quantity.toString());
   if (couponCode) url.searchParams.set('couponCode', couponCode);
   url.searchParams.set('language', language);
+  if (password) url.searchParams.set('password', password);
   return url.toString();
 };
 

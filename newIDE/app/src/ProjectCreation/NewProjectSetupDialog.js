@@ -88,6 +88,8 @@ export const generateProjectName = (nameToAppend: ?string): string =>
 export type NewProjectCreationSource =
   | 'default'
   | 'ai-agent-request'
+  // An AI agent connected to the MCP server of the editor.
+  | 'mcp'
   | 'course-chapter'
   | 'in-app-tutorial';
 
@@ -462,7 +464,7 @@ const NewProjectSetupDialog = ({
       if (!shouldAllowCreatingProject) return;
 
       setProjectNameError(null);
-      if (!projectName) {
+      if (!projectName.trim()) {
         setProjectNameError(
           <Trans>Please enter a name for your project.</Trans>
         );

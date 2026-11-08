@@ -51,6 +51,7 @@ import defaultShortcuts, {
 import AlertMessage from '../../UI/AlertMessage';
 import { isWebGL2Supported } from '../../Utils/WebGL';
 import ErrorBoundary from '../../UI/ErrorBoundary';
+import { LiveMcpServerContext } from '../../LiveMcpServer/LiveMcpServerContext';
 import CompactSelectField from '../../UI/CompactSelectField';
 import useAlertDialog from '../../UI/Alert/useAlertDialog';
 import TuneIcon from '../../UI/CustomSvgIcons/Tune';
@@ -419,6 +420,7 @@ const PreferencesDialog = ({
     showAllAnnouncements,
     showAllAskAiStandAloneForms,
     setAutoDisplayChangelog,
+    setAutoDisplayClaimableProductsDialog,
     setEventsSheetShowObjectThumbnails,
     setAutosaveOnPreview,
     setUseGDJSDevelopmentWatcher,
@@ -599,6 +601,38 @@ const PreferencesDialog = ({
   const commandPaletteSecondaryShortcut = getShortcutDisplayName(
     defaultSecondaryShortcuts['OPEN_COMMAND_PALETTE']
   );
+
+  const liveMcpServer = React.useContext(LiveMcpServerContext);
+  const liveMcpServerStatus = liveMcpServer.status;
+  const liveMcpServerSettings: Array<SettingDefinition> =
+    isDesktop && liveMcpServer.isSupported && liveMcpServerStatus
+      ? [
+          {
+            id: 'live-mcp-server',
+            label: i18n._(
+              t`Let AI agents (Claude Code, Cursor...) connect to the editor and edit the opened project (experimental)`
+            ),
+            renderControl: () =>
+              renderToggle(liveMcpServerStatus.enabled, enabled => {
+                liveMcpServer.setEnabled(enabled);
+              }),
+          },
+          {
+            id: 'live-mcp-server-setup',
+            label: liveMcpServerStatus.error
+              ? i18n._(
+                  t`The server could not start: ${liveMcpServerStatus.error}`
+                )
+              : i18n._(t`Connect an AI agent to GDevelop`),
+            renderControl: () => (
+              <FlatButton
+                label={<Trans>Set up</Trans>}
+                onClick={liveMcpServer.openSetupDialog}
+              />
+            ),
+          },
+        ]
+      : [];
 
   const renderToggle = (
     checked: boolean,
@@ -839,6 +873,17 @@ const PreferencesDialog = ({
                 renderToggle(
                   values.autoDisplayChangelog,
                   setAutoDisplayChangelog
+                ),
+            },
+            {
+              id: 'auto-display-claimable-products',
+              label: i18n._(
+                t`Display the free products to claim each month with your subscription`
+              ),
+              renderControl: () =>
+                renderToggle(
+                  values.autoDisplayClaimableProductsDialog,
+                  setAutoDisplayClaimableProductsDialog
                 ),
             },
           ],
@@ -1162,6 +1207,7 @@ const PreferencesDialog = ({
                   !Object.keys(values.hiddenAskAiStandAloneForms).length
                 ),
             },
+            ...liveMcpServerSettings,
           ],
         };
       case 'other':
